@@ -66,8 +66,8 @@ def run_edit(path: str, old_text: str, new_text: str) -> str:
 TOOL_HANDLERS = {
     'bash': lambda **kw: run_bash(kw['command']),
     'read_file': lambda **kw: read_file(kw['path'], kw.get('limit')),
-    'run_write': lambda **kw: run_write(kw['path'], kw['content']),
-    'run_edit': lambda **kw: run_edit(kw['path'], kw['old_text'], kw['new_text'])
+    'write_file': lambda **kw: run_write(kw['path'], kw['content']),
+    'edit_file': lambda **kw: run_edit(kw['path'], kw['old_text'], kw['new_text'])
 }
 
 TOOLS = [
@@ -82,4 +82,49 @@ TOOLS = [
 ]
 
 if __name__ == '__main__':
-    print('Hello')
+    history = []
+
+    while True:
+        user_input = input('user > ').strip()
+        if user_input.lower() in ('q', 'quit', 'exit'):
+            break
+
+        history.append({'role': 'user', 'content': user_input})
+
+        while True:
+
+            response = client.messages.create(
+                model='claude-haiku-4-5',
+                max_tokens=8000,
+                tools=TOOLS,
+                messages=history
+            )
+
+            history.append({'role': 'assistant', 'content': response.content})
+
+            if response.stop_reason == 'end_turn':
+                for block in response.content:
+                    if block.type == 'text':
+                        print(f'assistant: {block.text}')
+                break
+
+            if response.stop_reason == 'tool_use':
+                tool_results = []
+
+                # create tool results here
+                for block in response.content:
+
+                    if block.type == 'text':
+                        print(f'assistant > {block.text}')
+
+                    if block.type == 'tool_use':
+                        print(f'tool call {block.name} : {block.input}')
+                        tool_handler = TOOL_HANDLERS[block.name]
+                        r = tool_handler(**block.input)
+                        tool_results.append({
+                            'type': 'tool_result',
+                            'tool_use_id': block.id,
+                            'content': r
+                        })
+
+                history.append({'role': 'user', 'content': tool_results})
